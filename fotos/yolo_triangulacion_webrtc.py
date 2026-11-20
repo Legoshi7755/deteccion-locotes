@@ -22,6 +22,9 @@ IMG_SIZE = 960
 REFINAR_SAM = True
 REFINAR_SAM_VIDEO = False
 MAX_ERROR_EPIPOLAR = 5.0  # px; filtro geométrico, no garantía de correspondencia
+RECORTES_VIDEO = False  # en detección continua, no repetir YOLO en 4 recortes por lado (muy costoso)
+VISTA_VIDEO = (640, 360)  # tamaño de las vistas devueltas en video (el lienzo las dibuja a 640x360)
+CALIDAD_VISTA_VIDEO = 70
 modelo = None
 segmentador = None
 cal = None
@@ -169,7 +172,12 @@ def analizar(datos):
     vistas, masks_estereo = [], []
     refinar = REFINAR_SAM and (not datos.get("video") or REFINAR_SAM_VIDEO)
     for entrada, resultado in zip(entradas, resultados):
-        resultado = buscar_en_recortes(cv2.rotate(entrada[0], cv2.ROTATE_90_COUNTERCLOCKWISE), resultado)
+        natural = cv2.rotate(entrada[0], cv2.ROTATE_90_COUNTERCLOCKWISE)
+        if datos.get("video") and not RECORTES_VIDEO:
+            from filtro_video import filtrar_rojos
+            resultado = filtrar_rojos(natural, resultado)
+        else:
+            resultado = buscar_en_recortes(natural, resultado)
         if datos.get("video"):
             from filtro_video import confirmar_video
             sesion_video = str(datos.get("sesion_video", "default"))[:100]
@@ -204,7 +212,11 @@ def analizar(datos):
             cv2.drawMarker(vista, p, (255,255,0), cv2.MARKER_CROSS, 16, 2)
             cv2.putText(vista, str(numero), (p[0]+8,p[1]-8), cv2.FONT_HERSHEY_SIMPLEX,.6,(255,255,0),2)
     for vista in vistas:
-        ok, jpg = cv2.imencode(".jpg", vista, [cv2.IMWRITE_JPEG_QUALITY, 85])
+        calidad = 85
+        if datos.get('video'):
+            vista = cv2.resize(vista, VISTA_VIDEO, interpolation=cv2.INTER_AREA)
+            calidad = CALIDAD_VISTA_VIDEO
+        ok, jpg = cv2.imencode(".jpg", vista, [cv2.IMWRITE_JPEG_QUALITY, calidad])
         if not ok:
             raise ValueError("No se pudo preparar la vista")
         imagenes.append("data:image/jpeg;base64," + base64.b64encode(jpg).decode())

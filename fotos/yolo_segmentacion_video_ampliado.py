@@ -1,5 +1,6 @@
 """Receptor del modelo de frutos ampliado; no carga el modelo experimental de tallos."""
 import json
+import os
 from pathlib import Path
 import yolo_triangulacion_webrtc as app
 
@@ -21,6 +22,7 @@ def seleccionar():
 
 if __name__=='__main__':
     app.CONF=0.40
-    app.IMG_SIZE=960
+    # Tamaño de entrada de YOLO: 960 por defecto; 640 es ~2 veces más rápido (puede perder locotes pequeños)
+    app.IMG_SIZE=int(os.environ.get('WATSOCOTE_IMG_SIZE','960'))
     app.REFINAR_SAM_VIDEO=False
     app.main(seleccionar())
