@@ -52,20 +52,51 @@ function dibujarDemo(){
   demoCtx.fillStyle='#ff5252';demoCtx.fillText(`REC ${((performance.now()-demoInicio)/1000).toFixed(0)} s`,1100,35);
  }
 }
+// Detección continua solapada: mientras un par viaja al servidor se captura el siguiente.
+// Como máximo VIDEO_EN_VUELO pares a la vez; un resultado más viejo que el último mostrado se descarta.
+const VIDEO_EN_VUELO=3;
+let videoEnVuelo=0;
+const esperar=ms=>new Promise(r=>setTimeout(r,ms));
+async function capturarParVideo(){
+ const inicio=performance.now();
+ let [izq,der]=await Promise.all([foto('izq'),foto('der')]);
+ [izq,der]=await Promise.all([comprimirVideo(izq),comprimirVideo(der)]);
+ return {izq,der,captura:performance.now()-inicio};
+}
+async function enviarParVideo(par){
+ const inicio=performance.now();
+ const r=await fetch('/analizar',{method:'POST',headers:{'Content-Type':'application/json','X-Capture-Token':'__TOKEN__'},
+  body:JSON.stringify({izq:par.izq,der:par.der,video:true,sesion_video:demoSesion,guardar_entrenamiento:!!document.getElementById('guardarDatos')?.checked})});
+ const d=await r.json();if(!r.ok)throw new Error(d.error||('HTTP '+r.status));
+ d._solicitud=performance.now()-inicio;return d;
+}
 async function cicloDemo(version){
- while(demoActivo&&version===demoVersion){
-  if(demoPendiente||boton.disabled){await new Promise(r=>setTimeout(r,100));continue;}
-  demoPendiente=true;
-  try{
-   await analizarUnPar();
-   if(estado.textContent.startsWith('Error:'))throw new Error(estado.textContent);
+ let numero=0,ultimoMostrado=0,fallo=null;
+ const vigente=()=>demoActivo&&version===demoVersion&&!fallo;
+ while(vigente()){
+  if(videoEnVuelo>=VIDEO_EN_VUELO||boton.disabled){await esperar(10);continue;}
+  videoEnVuelo++;demoPendiente=true;const n=++numero;
+  let par;
+  try{par=await capturarParVideo();}
+  catch(e){videoEnVuelo--;fallo=e;break;}
+  if(!vigente()){videoEnVuelo--;break;}
+  enviarParVideo(par).then(async d=>{
+   if(!vigente()||n<=ultimoMostrado)return;
+   ultimoMostrado=n;
+   ultimoTiempoCaptura=par.captura;ultimoTiempoSolicitud=d._solicitud;ultimoTiempoServidor=d.proceso_ms||0;
+   estado.textContent=d.mensaje;
+   demoMedidas=d.medidas_video||[];demoObjetos=d.objetos_video||[[],[]];demoDispositivo=d.dispositivo||'desconocido';
+   demoYoloMs=d.yolo_ms||0;demoEstereoMs=d.estereo_ms||0;
+   await mostrarResultados(d.imagenes,d.originales);
    const ahora=performance.now();demoFPS=demoAnterior?1000/(ahora-demoAnterior):0;demoAnterior=ahora;demoUltimo=ahora;
-   estadoVideo.textContent=`${demoFPS.toFixed(1)} actualizaciones/s · ${demoDispositivo}\nCaptura ${Math.round(ultimoTiempoCaptura)} ms · solicitud ${Math.round(ultimoTiempoSolicitud)} ms · servidor ${Math.round(ultimoTiempoServidor)} ms\nYOLO ${Math.round(demoYoloMs)} ms · estéreo ${Math.round(demoEstereoMs)} ms`;
+   estadoVideo.textContent=`${demoFPS.toFixed(1)} actualizaciones/s · ${demoDispositivo} · ${VIDEO_EN_VUELO} pares en paralelo\nCaptura ${Math.round(ultimoTiempoCaptura)} ms · solicitud ${Math.round(ultimoTiempoSolicitud)} ms · servidor ${Math.round(ultimoTiempoServidor)} ms\nYOLO ${Math.round(demoYoloMs)} ms · estéreo ${Math.round(demoEstereoMs)} ms`;
    grabarVideo.disabled=!!(demoGrabador&&demoGrabador.state!=='inactive');
-  }catch(e){estadoVideo.textContent='Detección pausada: '+e.message;pausarDemo();}
-  finally{demoPendiente=false;}
-  await new Promise(r=>setTimeout(r,30));
+  }).catch(e=>{if(!fallo)fallo=e;}).finally(()=>{videoEnVuelo--;});
  }
+ // Esperar los pares que siguen en camino antes de liberar los botones.
+ while(videoEnVuelo>0)await esperar(20);
+ demoPendiente=false;
+ if(fallo&&version===demoVersion){estadoVideo.textContent='Detección pausada: '+fallo.message;estado.textContent='Error: '+fallo.message;pausarDemo();}
 }
 function pausarDemo(){
  demoActivo=false;demoVersion++;iniciarVideo.disabled=demoPendiente;pararVideo.disabled=true;
