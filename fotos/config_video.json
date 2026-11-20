@@ -1,0 +1,8 @@
+{
+  "ancho_emision_solicitado": 720,
+  "alto_emision_solicitado": 1280,
+  "fps_solicitados": 30,
+  "bitrate_kbps": 4000,
+  "zoom_solicitado": 1,
+  "nota": "Solicitudes al emisor; dependen del navegador y c\u00e1mara. No cambiar c\u00e1mara ni recorte sin recalibrar."
+}

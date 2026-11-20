@@ -1,0 +1,41 @@
+WATSOCOTE - VISION ESTEREO
+
+1. Extraer TODO el ZIP antes de ejecutar. Abrir esta carpeta en VS Code.
+2. Se necesita Python y un entorno con las dependencias de requirements.txt.
+   El entorno virtual no esta incluido. En tu PC podes usar el .venv-cuda existente.
+   No ejecutar los programas directamente dentro del ZIP.
+3. Conectar computadora y celulares al mismo Wi-Fi.
+4. En cada celular abrir su enlace, permitir la camara trasera e iniciar la transmision:
+   Izquierda: https://vdo.ninja/?push=jsM66LZ&width=720&height=1280&maxframerate=30&contenthint=detail&zoom=1&noaudio=
+   Derecha: https://vdo.ninja/?push=pEHcrM3&width=720&height=1280&maxframerate=30&contenthint=detail&zoom=1&noaudio=
+   Mantener la pantalla encendida y esa pestana al frente.
+5. Desde la carpeta extraida, usando el Python del entorno preparado:
+   python fotos/yolo_segmentacion_video_ampliado.py
+6. Abrir http://127.0.0.1:8766/ en la misma PC.
+   En vivo: camaras sin analisis.
+   Segmentar locote: captura y segmentacion puntual.
+   Iniciar deteccion continua: analisis repetido.
+   Grabar demo / Terminar grabacion: descarga un MP4 o WebM en el navegador.
+   Ctrl+J permite localizar las descargas. Ctrl+C en la terminal finaliza el programa.
+
+MODELO
+fotos/best_frutos_video_ampliado.pt es el modelo activo de frutos rojos.
+fotos/mobile_sam.pt sirve para el refinamiento manual opcional.
+Solo en esta copia de entrega se adaptaron las rutas de carga para que no dependan
+de C:\Users\kowac. El proyecto original no fue modificado.
+
+CALIBRACION
+Incluye la sesion calibracion_2026-10-31_02. Solo corresponde al montaje con el que se obtuvo.
+Si cambian posicion, lente, recorte o zoom de los celulares, recalibrar antes de medir.
+El tablero configurado es 8 x 6 cuadros, cuadro 27 mm, marcador 20 mm, DICT_4X4_50.
+Se incluyen los programas de captura y calibracion, pero no sus fotografias anteriores.
+No mezclar fotos nuevas con una calibracion anterior ni sobrescribirla.
+
+ALCANCE
+La emision y la grabacion solicitan 30 FPS. Esto no garantiza que la deteccion
+y la medicion se actualicen a 30 FPS: su frecuencia real depende del procesamiento. CUDA acelera YOLO; no elimina las demoras de captura y CPU.
+Las distancias son estimadas hasta un punto de superficie; las camaras no estan
+sincronizadas y no se garantiza medicion fiable durante movimiento.
+
+No se incluyen entorno virtual, imagenes de entrenamiento, grabaciones ni modelos
+experimentales anteriores. SHA256.json contiene los hashes de los archivos entregados.

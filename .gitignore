@@ -2,18 +2,17 @@
 __pycache__/
 *.py[cod]
 .venv/
+.venv-cuda/
 venv/
 env/
-*.egg-info/
-.ipynb_checkpoints/
 
 # Entorno y secretos
 .env
 
-# Resultados generados
-resultados/*
-!resultados/.gitkeep
+# Ultralytics / grabaciones generadas
 runs/
+*.mp4
+*.webm
 
 # Sistema
 .DS_Store

@@ -1,0 +1,35 @@
+{
+  "best": "best_frutos_video_ampliado.pt",
+  "comparacion": {
+    "anterior": {
+      "pesos": "modelo anterior no incluido (solo referencia de evaluacion)",
+      "metricas": {
+        "metrics/precision(B)": 0.6512012538986843,
+        "metrics/recall(B)": 0.5020746887966805,
+        "metrics/mAP50(B)": 0.5779292134638749,
+        "metrics/mAP50-95(B)": 0.3429116701563081,
+        "metrics/precision(M)": 0.6097182268812207,
+        "metrics/recall(M)": 0.48132780082987553,
+        "metrics/mAP50(M)": 0.5349951710162334,
+        "metrics/mAP50-95(M)": 0.26232447470339093,
+        "fitness": 0.605236144859699
+      }
+    },
+    "nuevo": {
+      "pesos": "best_frutos_video_ampliado.pt",
+      "metricas": {
+        "metrics/precision(B)": 0.6734208987882044,
+        "metrics/recall(B)": 0.5850622406639004,
+        "metrics/mAP50(B)": 0.6210232862632536,
+        "metrics/mAP50-95(B)": 0.37480142429679053,
+        "metrics/precision(M)": 0.6269427293581362,
+        "metrics/recall(M)": 0.5726141078838174,
+        "metrics/mAP50(M)": 0.5698002770391317,
+        "metrics/mAP50-95(M)": 0.2972052888385606,
+        "fitness": 0.6720067131353511
+      }
+    }
+  },
+  "activado_en_aplicacion": false,
+  "dataset": "datos de entrenamiento no incluidos"
+}

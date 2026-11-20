@@ -1,3 +1,0 @@
-# Pesos de modelos grandes (activar Git LFS si superan ~50 MB)
-# *.pt filter=lfs diff=lfs merge=lfs -text
-# *.onnx filter=lfs diff=lfs merge=lfs -text

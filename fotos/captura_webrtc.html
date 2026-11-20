@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="es"><meta charset="utf-8"><title>Captura estéreo WebRTC</title>
+<style>body{font:18px system-ui;background:#17202a;color:white;margin:24px}section{display:flex;gap:16px}article{width:50%}iframe{width:100%;height:48vh;border:1px solid #789}button{padding:14px;font:inherit}#estado{white-space:pre-wrap}</style>
+<h1>Captura estéreo WebRTC</h1>__CONFIG_VIDEO__
+<p>Mantené el tablero quieto. Las imágenes NO están sincronizadas. Salida fija: 1280 × 720. Las imágenes verticales (9:16) se giran 90° al guardar. Mantené fija la orientación de los teléfonos durante toda la sesión. Ampliar una imagen no recupera detalle. No cambies zoom ni cámara durante la sesión.</p>
+<section><article><h2>Izquierda</h2><iframe id="izq" allow="autoplay; fullscreen" src="https://vdo.ninja/?view=jsM66LZ&noaudio&cleanoutput&scale=100&bitrate=4000"></iframe></article>
+<article><h2>Derecha</h2><iframe id="der" allow="autoplay; fullscreen" src="https://vdo.ninja/?view=pEHcrM3&noaudio&cleanoutput&scale=100&bitrate=4000"></iframe></article></section>
+<p><button id="capturar">Capturar par</button></p><p id="estado">Esperá hasta ver ambas cámaras antes de capturar.</p>
+<script>
+const streams={izq:'jsM66LZ',der:'pEHcrM3'}, pendientes=new Map();
+const boton=document.getElementById('capturar'), estado=document.getElementById('estado');
+window.addEventListener('message', e=>{
+ if(e.origin!=='https://vdo.ninja'||!e.data||typeof e.data!=='object')return;
+ for(const [id,p] of pendientes){
+  if(e.source!==document.getElementById(p.lado).contentWindow||e.data.cib!==id)continue;
+  if(e.data.frame){clearTimeout(p.timer);pendientes.delete(id);p.resolve(e.data.frame);}
+ }
+});
+function foto(lado){return new Promise((resolve,reject)=>{
+ const id=crypto.randomUUID();
+ const timer=setTimeout(()=>{pendientes.delete(id);reject(new Error('No llegó la imagen de '+lado+'. Revisá que el celular siga transmitiendo.'));},7000);
+ pendientes.set(id,{lado,resolve,timer});
+ document.getElementById(lado).contentWindow.postMessage({getSnapshotByStreamID:streams[lado],cib:id},'https://vdo.ninja');
+});}
+boton.onclick=async()=>{
+ boton.disabled=true;estado.textContent='Solicitando ambas imágenes…';
+ try{
+  const [izq,der]=await Promise.all([foto('izq'),foto('der')]);
+  const r=await fetch('/capturar',{method:'POST',headers:{'Content-Type':'application/json','X-Capture-Token':'__TOKEN__'},body:JSON.stringify({izq,der})});
+  const d=await r.json();if(!r.ok)throw new Error(d.error);
+  estado.textContent=d.mensaje;
+ }catch(e){estado.textContent='Error: '+e.message;}finally{boton.disabled=false;}
+};
+</script></html>
