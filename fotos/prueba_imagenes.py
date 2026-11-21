@@ -6,6 +6,7 @@ por recortes cuando no detecta nada. Funciona con GPU o en CPU.
 
 Uso por consola (desde la raíz del repositorio):
     python fotos/prueba_imagenes.py foto1.jpg carpeta_fotos/ video.mp4 --salida resultados
+    python fotos/prueba_imagenes.py carpeta_fotos/ --tallo      # modelo nuevo: locote, tallo, hojas y ramas
 """
 import argparse
 import sys
@@ -129,9 +130,14 @@ def main():
     parser.add_argument("--conf", type=float, default=0.40, help="confianza mínima (por defecto 0.40)")
     parser.add_argument("--sam", action="store_true", help="refinar contornos de fotos con MobileSAM (más lento)")
     parser.add_argument("--cada", type=int, default=1, help="en videos, analizar 1 de cada N cuadros")
+    parser.add_argument("--tallo", action="store_true",
+                        help="usar el modelo nuevo: locote (rojo), tallo (cian), hoja (verde) y rama (magenta)")
+    parser.add_argument("--sin-hojas", action="store_true", help="con --tallo, no usar el modelo de hojas/ramas")
     args = parser.parse_args()
     salida = Path(args.salida)
     salida.mkdir(parents=True, exist_ok=True)
+    if args.tallo:
+        return main_tallo(args, salida)
     cargar_modelo(conf=args.conf)
     for ruta in recolectar(args.entradas):
         ext = ruta.suffix.lower()
@@ -148,6 +154,57 @@ def main():
             cv2.imwrite(str(salida / f"{ruta.stem}_anotado.jpg"), vista)
             confs = ", ".join(f"{d['confianza']:.2f}" for d in dets)
             print(f"{ruta.name}: {len(dets)} locote(s) [{confs}] en {(time.perf_counter() - t) * 1000:.0f} ms")
+        else:
+            print(f"{ruta.name}: formato no admitido")
+    print(f"\nResultados en {salida.resolve()}")
+
+
+def main_tallo(args, salida):
+    """Fotos y videos con el modelo de locote + tallo (y hojas/ramas). Ver probar_locote_tallo.py."""
+    from ultralytics import YOLO
+    import probar_locote_tallo as pt
+    pt.CONF_LOCOTE = args.conf
+    modelo = YOLO(str(pt.MODELO_TALLO))
+    hojas = None if args.sin_hojas else YOLO(str(pt.MODELO_HOJAS))
+    print(f"Modelo tallo: {pt.MODELO_TALLO.name} | hojas: {pt.MODELO_HOJAS.name if hojas else 'no'} | dispositivo: {pt.DISPOSITIVO}")
+
+    def una(imagen):
+        r = modelo.predict(imagen, conf=min(pt.CONF_TALLO, args.conf), imgsz=960, device=pt.DISPOSITIVO, verbose=False)[0]
+        rh = None if hojas is None else hojas.predict(imagen, conf=pt.CONF_HOJA_RAMA, imgsz=640, device=pt.DISPOSITIVO,
+                                                      verbose=False, classes=[2, 3], max_det=400)[0]
+        vista, tallos = pt.dibujar(imagen, r, rh)
+        return vista, [{k: v for k, v in t.items() if not k.startswith("_")} for t in tallos]
+
+    for ruta in recolectar(args.entradas):
+        ext = ruta.suffix.lower()
+        if ext in EXT_IMAGEN:
+            imagen = cv2.imread(str(ruta))
+            if imagen is None:
+                print(f"{ruta.name}: no se pudo leer")
+                continue
+            t = time.perf_counter()
+            vista, tallos = una(imagen)
+            cv2.imwrite(str(salida / f"{ruta.stem}_tallo.jpg"), vista)
+            print(f"{ruta.name}: {len(tallos)} tallo(s) {tallos} en {(time.perf_counter() - t) * 1000:.0f} ms")
+        elif ext in EXT_VIDEO:
+            cap = cv2.VideoCapture(str(ruta))
+            fps = cap.get(cv2.CAP_PROP_FPS) or 30
+            escritor, n, vista = None, 0, None
+            while True:
+                ok, cuadro = cap.read()
+                if not ok:
+                    break
+                if n % args.cada == 0:
+                    vista, _ = una(cuadro)
+                if escritor is None:
+                    h, w = cuadro.shape[:2]
+                    escritor = cv2.VideoWriter(str(salida / f"{ruta.stem}_tallo.mp4"), cv2.VideoWriter_fourcc(*"mp4v"), fps, (w, h))
+                escritor.write(vista if vista is not None else cuadro)
+                n += 1
+            cap.release()
+            if escritor is not None:
+                escritor.release()
+            print(f"{ruta.name}: {n} cuadros anotados")
         else:
             print(f"{ruta.name}: formato no admitido")
     print(f"\nResultados en {salida.resolve()}")

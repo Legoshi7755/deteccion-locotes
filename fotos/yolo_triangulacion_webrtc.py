@@ -26,6 +26,10 @@ RECORTES_VIDEO = False  # en detección continua, no repetir YOLO en 4 recortes 
 VISTA_VIDEO = (640, 360)  # tamaño de las vistas devueltas en video (el lienzo las dibuja a 640x360)
 CALIDAD_VISTA_VIDEO = 70
 modelo = None
+modelo_tallo = None   # locote + tallo (modelos/locote_tallo_v2.pt)
+modelo_hojas = None   # 4 clases, solo para hojas y ramas (modelos/locote_tallo_hojas.pt)
+USAR_TALLO = True     # poner False para desactivar el tallo 3D
+USAR_HOJAS = True     # False: sin hojas/ramas (más rápido; sin avisos 'tapado' ni 'rama cerca')
 segmentador = None
 cal = None
 dispositivo = "cpu"
@@ -206,6 +210,23 @@ def analizar(datos):
     tiempo_estereo = time.perf_counter()
     medidas = estimar([x[0] for x in entradas], masks_estereo, triangulacion, cal) if datos.get('video') else []
     tiempo_estereo = (time.perf_counter()-tiempo_estereo)*1000
+    # Tallo en 3D (punto de agarre): modelo locote+tallo y modelo de hojas/ramas (ver tallo_3d.py).
+    tallos = []
+    tiempo_tallo = time.perf_counter()
+    if modelo_tallo is not None:
+        import tallo_3d
+        naturales = [cv2.rotate(x[0], cv2.ROTATE_90_COUNTERCLOCKWISE) for x in entradas]
+        _, _, tallos = tallo_3d.tallos_3d(naturales[0], naturales[1], cal, modelo_tallo, modelo_hojas)
+        for t in tallos:
+            if t.get('estado') != 'ok':
+                continue
+            color = (0, 165, 255) if (t.get('tapado') or t.get('rama_cerca')) else (0, 255, 255)
+            for vista, clave in ((vistas[0], 'agarre_izq_px'), (vistas[1], 'agarre_der_px')):
+                p = tuple(np.round(tallo_3d.vertical_a_calibrada(t[clave])[0]).astype(int))
+                cv2.circle(vista, p, 10, color, 2)
+                cv2.putText(vista, f"tallo {t['distancia_cm']} cm", (p[0] + 12, p[1] - 10),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.7, color, 2)
+    tiempo_tallo = (time.perf_counter() - tiempo_tallo) * 1000
     for numero, medida in enumerate(medidas, 1):
         for vista, punto in zip(vistas, medida['puntos']):
             p = tuple(np.round(punto).astype(int))
@@ -231,6 +252,13 @@ def analizar(datos):
         mensaje += (' Distancia estimada a superficie próxima al centro: '+ '; '.join(f"P{i}: {m['distancia_cm']:.1f} cm" for i,m in enumerate(medidas,1))
                     if medidas else ' Sin distancia automática: falta correspondencia de textura consistente.')
         mensaje += f' Dispositivo real YOLO: {dispositivo_real}. YOLO {tiempo_yolo:.0f} ms; correspondencias {tiempo_estereo:.0f} ms. Distancias {len(medidas)}; detecciones {len(cajas[0])}/{len(cajas[1])}.'
+    if modelo_tallo is not None:
+        ok = [t for t in tallos if t.get('estado') == 'ok']
+        mensaje += (' TALLOS 3D: ' + '; '.join(
+            f"T{i}: {t['distancia_cm']} cm, XYZ {t['xyz_mm']} mm"
+            + (' (tapado por hoja)' if t.get('tapado') else '') + (' (rama cerca)' if t.get('rama_cerca') else '')
+            for i, t in enumerate(ok, 1)) if ok else ' Tallos 3D: ninguno emparejado entre las dos cámaras.')
+        mensaje += f' Tallo {tiempo_tallo:.0f} ms.'
     from datos_carrito import guardar_muestra
     guardado = guardar_muestra(datos, entradas, resultados_datos)
     if guardado:
@@ -243,6 +271,7 @@ def analizar(datos):
             if not ok:raise ValueError("No se pudo preparar el original")
             originales.append("data:image/png;base64," + base64.b64encode(png).decode())
     return {"mensaje": mensaje, "imagenes": imagenes, "originales": originales, "medida": None, "medidas_video": medidas,
+            "tallos_3d": tallos, "tallo_ms": round(tiempo_tallo, 1),
             "objetos_video": [[[float((d[0][0]+d[0][2])/2),float((d[0][1]+d[0][3])/2)] for d in lado] for lado in cajas],
             "dispositivo": dispositivo_real, "yolo_ms": round(tiempo_yolo,1), "estereo_ms": round(tiempo_estereo,1),
             "proceso_ms": round((time.perf_counter()-inicio)*1000,1)}
@@ -294,7 +323,7 @@ class Handler(captura.Handler):
 
 
 def main(modelo_ruta=None):
-    global modelo, segmentador, cal, dispositivo
+    global modelo, segmentador, cal, dispositivo, modelo_tallo, modelo_hojas
     import torch
     cv2.setNumThreads(2)
     torch.set_num_threads(2)
@@ -322,6 +351,17 @@ def main(modelo_ruta=None):
     print("Calibración activa:", CALIBRACION)
     print("Modelo:", pesos_yolo, "Clases:", modelo.names, "Dispositivo:", dispositivo)
     modelo.predict(np.zeros((720,1280,3), np.uint8), device=dispositivo, verbose=False)
+    if USAR_TALLO:
+        import probar_locote_tallo
+        if probar_locote_tallo.MODELO_TALLO.is_file():
+            modelo_tallo = YOLO(str(probar_locote_tallo.MODELO_TALLO))
+            if USAR_HOJAS and probar_locote_tallo.MODELO_HOJAS.is_file():
+                modelo_hojas = YOLO(str(probar_locote_tallo.MODELO_HOJAS))
+            print("Tallo 3D activo:", probar_locote_tallo.MODELO_TALLO.name,
+                  "| hojas/ramas:", probar_locote_tallo.MODELO_HOJAS.name if modelo_hojas else "no",
+                  "" if dispositivo == 0 else "(en CPU: más lento)")
+        else:
+            print("Tallo 3D desactivado: falta", probar_locote_tallo.MODELO_TALLO)
     print("Abrí http://127.0.0.1:8766 en Chrome. Ctrl+C para finalizar.")
     with HTTPServer(("127.0.0.1", 8766), Handler) as servidor:
         try:

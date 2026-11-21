@@ -25,6 +25,27 @@ Usa el mismo modelo, umbral (0,40) y filtros que la aplicación. Opciones:
 - `--conf 0.3`: cambia la confianza mínima.
 - `--cada 3`: en videos, analiza 1 de cada 3 cuadros.
 
+## Modelo de tallo (punto de agarre)
+
+Además del detector de frutos, hay un modelo que segmenta **locote** (rojo) y **tallo** (cian), y otro que agrega **hojas** (verde) y **ramas** (magenta). Están en `fotos/modelos/`:
+
+| Archivo | Clases | Uso |
+|---|---|---|
+| `locote_tallo_v2.pt` | locote, tallo | decide locote y tallo (AP50 de máscara en test: tallo 0,76, locote 0,83) |
+| `locote_tallo_hojas.pt` | locote, tallo, hoja, rama | solo aporta hojas y ramas |
+
+Entrenados con datasets públicos de Roboflow Universe (CC BY 4.0): *Bell Peppers Segmentation 2* (VisionFrutas), *sweet pepper* (Luis Montoya, vía Eszie) y *pepper-project* (Sean Somogyvari / Vineland).
+
+Reglas: un tallo solo cuenta si toca un locote detectado, y se toma uno por locote. Cada tallo indica `tapado` si una hoja lo cubre y `rama_cerca` si una rama pasa junto al punto de agarre.
+
+**Fotos y videos:**
+```bash
+python fotos/prueba_imagenes.py carpeta_fotos/ --tallo
+```
+`--sin-hojas` usa solo el modelo de locote/tallo (más rápido).
+
+**Aplicación estéreo:** `yolo_triangulacion_webrtc.py` calcula en cada análisis la posición 3D del punto de agarre (`tallos_3d`: XYZ en mm en el marco de la cámara izquierda, distancia, `tapado`, `rama_cerca`). Usa la línea epipolar de la calibración para encontrar el mismo punto del tallo en la imagen derecha (`fotos/tallo_3d.py`). Se desactiva con `USAR_TALLO = False`, o solo las hojas con `USAR_HOJAS = False`. Las distancias del tallo **todavía no están validadas con cinta métrica**.
+
 ## Contenido
 
 ```
