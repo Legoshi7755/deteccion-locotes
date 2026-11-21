@@ -12,6 +12,15 @@ import cv2
 import numpy as np
 import glob, os, re, sys
 
+
+def _medida_entorno(nombre, defecto):
+    """Valor opcional desde una variable de entorno; vacío o 0 desactiva la comprobación."""
+    valor = os.environ.get(nombre)
+    if valor is None:
+        return defecto
+    valor = valor.strip().replace(",", ".")
+    return float(valor) if valor and float(valor) > 0 else None
+
 # ======================= CONFIGURACIÓN =======================
 from config_calibracion import (
     CARPETA_IZQ, CARPETA_DER, CARPETA_DEBUG, SALIDA,
@@ -20,8 +29,9 @@ from config_calibracion import (
 DICCIONARIO = getattr(cv2.aruco, DICCIONARIO_NOMBRE)
 
 # Montaje real, solo para comprobar que el resultado tiene sentido (pon None para desactivar)
-BASELINE_ESPERADA_MM = 528.0      # distancia medida entre los centros ópticos de las dos cámaras
-ROTACION_ESPERADA_GRADOS = 60.0   # suma de las inclinaciones hacia adentro (30° + 30°)
+# Se pueden cambiar con WATSOCOTE_BASELINE_MM y WATSOCOTE_ROTACION_GRADOS (0 = no comprobar).
+BASELINE_ESPERADA_MM = _medida_entorno("WATSOCOTE_BASELINE_MM", 528.0)        # distancia medida entre los centros ópticos de las dos cámaras
+ROTACION_ESPERADA_GRADOS = _medida_entorno("WATSOCOTE_ROTACION_GRADOS", 60.0)  # suma de las inclinaciones hacia adentro (30° + 30°)
 
 MIN_ESQUINAS = 10                 # mínimo de esquinas ChArUco por foto para usarla
 MIN_COMUNES = 8                   # mínimo de esquinas vistas por AMBAS cámaras en un par
@@ -184,7 +194,15 @@ def comprobar_montaje(R, T):
         Te = BASELINE_ESPERADA_MM * np.array([-np.cos(a), 0.0, np.sin(a)])
         print(f"T calibrado = {T.ravel().round(0)}   T esperado (inclinación simétrica) = {Te.round(0)}")
         print("   (las diferencias en T se deben sobre todo a que las inclinaciones reales no son idénticas)")
-    print(f"T_y = {float(np.ravel(T)[1]):.1f} mm: debería ser pequeño si las dos cámaras están a la misma altura.")
+    t = np.abs(np.ravel(T))
+    eje = "XYZ"[int(np.argmax(t))]
+    print(f"Separación principal en el eje {eje} ({t.max():.1f} mm de {nT:.1f} mm).")
+    if eje == "Y":
+        print("   Normal con los celulares en vertical y lado a lado: las fotos se giran 90° antes de calibrar.")
+    elif eje == "X":
+        print("   Normal con cámaras apaisadas lado a lado.")
+    else:
+        print("   REVISAR: una cámara está mucho más adelante que la otra.")
 
 
 def validar_epipolar(a, b, K1, d1, K2, d2, R, T):
