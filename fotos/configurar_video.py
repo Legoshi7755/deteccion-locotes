@@ -17,7 +17,7 @@ def enlaces():
 def panel():
     urls=enlaces()
     c=json.loads((BASE/'config_video.json').read_text(encoding='utf-8'))
-    return f'<details><summary>Configurar emisión desde los celulares</summary><p>Solicitado: {c["ancho_emision_solicitado"]} × {c["alto_emision_solicitado"]}, máximo {c["fps_solicitados"]} FPS y zoom {c["zoom_solicitado"]} (si la cámara lo admite). Abrí el enlace de cada lado EN ESE CELULAR y seleccioná la misma cámara trasera usada al calibrar. Cerrá su emisión anterior antes. Si cambia el encuadre, hay que recalibrar. La resolución recibida puede bajar por adaptación de WebRTC.</p>'+''.join(f'<p>{lado}: <a href="{html.escape(url,quote=True)}">{html.escape(url)}</a></p>' for lado,url in urls.items())+'</details>'
+    return f'<details><summary>Configurar emisión desde los celulares</summary><p>Solicitado: {c["ancho_emision_solicitado"]} × {c["alto_emision_solicitado"]}, máximo {c["fps_solicitados"]} FPS y zoom {c["zoom_solicitado"]} (si la cámara lo admite). Abrí el enlace de cada lado EN ESE CELULAR y seleccioná la misma cámara trasera usada al calibrar. Cerrá del todo su emisión anterior antes (recargar no alcanza). <b>No toques los ajustes de video de VDO.Ninja en el celular</b> (ancho, alto, proporción): cambian el encuadre y hay que recalibrar. Si cambia el encuadre, hay que recalibrar. La resolución recibida puede bajar por adaptación de WebRTC.</p>'+''.join(f'<p>{lado}: <a href="{html.escape(url,quote=True)}">{html.escape(url)}</a></p>' for lado,url in urls.items())+'</details>'
 
 
 def preparar_receptor(html_text,codec=None):

@@ -1,10 +1,11 @@
 {
-  "ancho_emision_solicitado": 720,
-  "alto_emision_solicitado": 1280,
-  "fps_solicitados": 30,
+  "ancho_emision_solicitado": 1920,
+  "alto_emision_solicitado": 1080,
+  "fps_solicitados": 15,
   "bitrate_kbps": 4000,
   "zoom_solicitado": 1,
   "nota": "Solicitudes al emisor; dependen del navegador y c\u00e1mara. No cambiar c\u00e1mara ni recorte sin recalibrar.",
   "codec_recepcion": "h264",
-  "nota_codec": "h264 usa el codificador por hardware del celular (m\u00e1s fluido). Vac\u00edo = c\u00f3dec por defecto de VDO.Ninja (VP8/VP9 por software)."
+  "nota_codec": "h264 usa el codificador por hardware del celular (m\u00e1s fluido). Vac\u00edo = c\u00f3dec por defecto de VDO.Ninja (VP8/VP9 por software).",
+  "nota_resolucion": "Se pide 1920x1080 (forma est\u00e1ndar; el celular gira la imagen solo). Pedir 720x1280 hac\u00eda que un celular entregara 720x405. No usar los ajustes de video de VDO.Ninja en el celular: cambian el encuadre."
 }
