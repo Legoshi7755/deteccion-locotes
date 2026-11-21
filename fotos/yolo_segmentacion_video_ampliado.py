@@ -21,7 +21,13 @@ def seleccionar():
 
 
 if __name__=='__main__':
-    app.CONF=0.40
+    import argparse
+    import camaras_directas
+    parser = camaras_directas.argumentos(argparse.ArgumentParser(description='Aplicación de visión estéreo'))
+    args = parser.parse_args()
+    camaras_directas.configurar_desde(args, 8766)
+    # Confianza mínima de YOLO (WATSOCOTE_CONF, por defecto 0.40)
+    app.CONF=float(os.environ.get('WATSOCOTE_CONF','0.40').replace(',','.'))
     # Tamaño de entrada de YOLO: 960 por defecto; 640 es ~2 veces más rápido (puede perder locotes pequeños)
     app.IMG_SIZE=int(os.environ.get('WATSOCOTE_IMG_SIZE','960'))
     app.REFINAR_SAM_VIDEO=False

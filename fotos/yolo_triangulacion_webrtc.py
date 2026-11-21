@@ -6,13 +6,14 @@ Usa la misma rotación y escala de captura_webrtc.py. No guarda fotos.
 """
 import base64
 import json
+import threading
 import time
 from pathlib import Path
-from http.server import HTTPServer
 
 import cv2
 import numpy as np
 import captura_webrtc as captura
+import camaras_directas as directas
 
 BASE = Path(__file__).resolve().parent
 MODELO = BASE / "best_2k.pt"
@@ -25,6 +26,7 @@ MAX_ERROR_EPIPOLAR = 5.0  # px; filtro geométrico, no garantía de corresponden
 RECORTES_VIDEO = False  # en detección continua, no repetir YOLO en 4 recortes por lado (muy costoso)
 VISTA_VIDEO = (640, 360)  # tamaño de las vistas devueltas en video (el lienzo las dibuja a 640x360)
 CALIDAD_VISTA_VIDEO = 70
+LOCK_ANALISIS = threading.Lock()  # el servidor atiende con hilos: un análisis a la vez sobre el modelo
 modelo = None
 segmentador = None
 cal = None
@@ -251,13 +253,21 @@ def analizar(datos):
 
 class Handler(captura.Handler):
     def do_GET(self):
-        if self.path != "/":
+        if directas.manejar_get(self):
+            return
+        if self.path.split("?")[0] != "/":
             self.responder(404, "{}")
             return
+        if not directas.clave_valida(self):
+            self.responder(403, "Falta la clave de acceso (?clave=...) o no es correcta.", "text/plain")
+            return
+        from configurar_video import panel
         from interfaz_vision import pagina
-        self.responder(200, pagina(captura.TOKEN), "text/html")
+        self.responder(200, directas.inyectar_visor(pagina(captura.TOKEN), panel_vdo=panel()), "text/html")
 
     def do_POST(self):
+        if directas.manejar_post(self):
+            return
         if self.path not in ("/analizar", "/triangular-manual", "/segmentar-manual") or self.headers.get("X-Capture-Token") != captura.TOKEN:
             self.responder(403, '{}')
             return
@@ -266,31 +276,41 @@ class Handler(captura.Handler):
             if not 0 < n <= captura.LIMIT:
                 raise ValueError("Solicitud demasiado grande o vacía")
             datos = json.loads(self.rfile.read(n))
-            if self.path in ("/triangular-manual", "/segmentar-manual"):
-                puntos = np.asarray([datos["izq"], datos["der"]], dtype=np.float64)
-                if puntos.shape != (2, 2) or not np.isfinite(puntos).all():
-                    raise ValueError("Se necesitan dos puntos 2D válidos")
-                if np.any(puntos < 0) or np.any(puntos[:,0] >= 1280) or np.any(puntos[:,1] >= 720):
-                    raise ValueError("Punto fuera de la imagen calibrada")
-                if self.path == "/segmentar-manual":
-                    imagenes, cantidades = [], []
-                    for i, lado in enumerate(("izq", "der")):
-                        im, _ = normalizar(datos["originales"][i])
-                        vista, cantidad = segmentar_imagen(im, [], puntos[i].tolist())
-                        ok, jpg = cv2.imencode(".jpg", vista, [cv2.IMWRITE_JPEG_QUALITY, 85])
-                        if not ok:
-                            raise ValueError("No se pudo codificar la máscara")
-                        imagenes.append("data:image/jpeg;base64," + base64.b64encode(jpg).decode())
-                        cantidades.append(cantidad)
-                    self.responder(200, json.dumps({"imagenes": imagenes, "mensaje": f"SAM guiado por puntos: máscaras izquierda {cantidades[0]}, derecha {cantidades[1]}. Revisá el contorno; no es una detección automática de locote. Para medir, volvé a seleccionar el mismo centro de la cruz."}))
-                    return
-                xyz, error = triangulacion(puntos[0], puntos[1], cal)
-                resultado = {"mensaje": f"PUNTO MANUAL: distancia desde cámara izquierda {np.linalg.norm(xyz)/10:.2f} cm; profundidad Z {xyz[2]/10:.2f} cm; error epipolar {error:.2f} px. Compará la cinta desde la lente hasta el centro de la cruz."}
-            else:
-                resultado = analizar(datos)
-            self.responder(200, json.dumps(resultado, allow_nan=False))
+            if self.path == "/analizar":
+                datos = directas.resolver_directo(datos)
+            with LOCK_ANALISIS:
+                resultado = self._procesar(datos)
+            if resultado is not None:
+                self.responder(200, json.dumps(resultado, allow_nan=False))
         except Exception as exc:
             self.responder(400, json.dumps({"error": str(exc)}))
+
+    def _procesar(self, datos):
+        if self.path in ("/triangular-manual", "/segmentar-manual"):
+            puntos = np.asarray([datos["izq"], datos["der"]], dtype=np.float64)
+            if puntos.shape != (2, 2) or not np.isfinite(puntos).all():
+                raise ValueError("Se necesitan dos puntos 2D válidos")
+            if np.any(puntos < 0) or np.any(puntos[:,0] >= 1280) or np.any(puntos[:,1] >= 720):
+                raise ValueError("Punto fuera de la imagen calibrada")
+            if self.path == "/segmentar-manual":
+                imagenes, cantidades = [], []
+                for i, lado in enumerate(("izq", "der")):
+                    im, _ = normalizar(datos["originales"][i])
+                    vista, cantidad = segmentar_imagen(im, [], puntos[i].tolist())
+                    ok, jpg = cv2.imencode(".jpg", vista, [cv2.IMWRITE_JPEG_QUALITY, 85])
+                    if not ok:
+                        raise ValueError("No se pudo codificar la máscara")
+                    imagenes.append("data:image/jpeg;base64," + base64.b64encode(jpg).decode())
+                    cantidades.append(cantidad)
+                return {"imagenes": imagenes, "mensaje": f"SAM guiado por puntos: máscaras izquierda {cantidades[0]}, derecha {cantidades[1]}. Revisá el contorno; no es una detección automática de locote. Para medir, volvé a seleccionar el mismo centro de la cruz."}
+            xyz, error = triangulacion(puntos[0], puntos[1], cal)
+            resultado = {"mensaje": f"PUNTO MANUAL: distancia desde cámara izquierda {np.linalg.norm(xyz)/10:.2f} cm; profundidad Z {xyz[2]/10:.2f} cm; error epipolar {error:.2f} px. Compará la cinta desde la lente hasta el centro de la cruz."}
+        else:
+            resultado = analizar(datos)
+            if "_desfase_ms" in datos:
+                resultado["desfase_ms"] = datos["_desfase_ms"]
+                resultado["mensaje"] += f" Celulares directos: desfase entre fotos {datos['_desfase_ms']} ms."
+        return resultado
 
 
 def main(modelo_ruta=None):
@@ -322,8 +342,7 @@ def main(modelo_ruta=None):
     print("Calibración activa:", CALIBRACION)
     print("Modelo:", pesos_yolo, "Clases:", modelo.names, "Dispositivo:", dispositivo)
     modelo.predict(np.zeros((720,1280,3), np.uint8), device=dispositivo, verbose=False)
-    print("Abrí http://127.0.0.1:8766 en Chrome. Ctrl+C para finalizar.")
-    with HTTPServer(("127.0.0.1", 8766), Handler) as servidor:
+    with directas.servir(Handler, 8766, titulo="la aplicación") as servidor:
         try:
             servidor.serve_forever()
         except KeyboardInterrupt:

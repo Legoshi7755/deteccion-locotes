@@ -1,0 +1,296 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
+<meta name="theme-color" content="#0b1316">
+<title>Cámara __NOMBRE_LADO__ · Watsocote</title>
+<style>
+:root{color-scheme:dark;--bg:#0b1316;--panel:#121e22;--line:#293a3f;--muted:#9bb0b7;--ok:#b8ee7c;--warn:#ffb454;--bad:#ff6b6b}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:#eef4f3;font:16px system-ui,sans-serif;padding:12px 12px 40px}
+h1{font-size:22px;margin:4px 0 10px}h1 b{color:var(--ok)}
+.vista{position:relative;background:#000;border-radius:10px;overflow:hidden}
+video{display:block;width:100%;max-height:52vh;object-fit:contain}
+#marca{position:absolute;left:8px;top:8px;background:#000a;padding:4px 8px;border-radius:6px;font-size:13px}
+.estado{margin:10px 0;padding:10px;border-radius:8px;background:var(--panel);font-size:14px;line-height:1.5}
+.grupo{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px;margin:10px 0}
+.grupo h2{font-size:15px;margin:0 0 8px;color:var(--muted);font-weight:600}
+.fila{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:6px 0}
+button{font:inherit;padding:12px 14px;border-radius:9px;border:1px solid var(--line);background:#1c2b30;color:inherit;min-height:46px}
+button.principal{background:var(--ok);color:#0b1316;border:0;font-weight:700;width:100%}
+button.activo{outline:2px solid var(--ok)}
+button:disabled{opacity:.45}
+select,input[type=range]{font:inherit;flex:1;min-width:140px}
+select{padding:10px;border-radius:8px;background:#1c2b30;color:inherit;border:1px solid var(--line)}
+.valor{min-width:70px;text-align:right;font-variant-numeric:tabular-nums}
+.nota{color:var(--muted);font-size:13px}
+.ok{color:var(--ok)}.warn{color:var(--warn)}.bad{color:var(--bad)}
+</style>
+</head>
+<body>
+<h1>Cámara <b>__NOMBRE_LADO__</b></h1>
+<div class="vista"><video id="video" playsinline muted autoplay></video><span id="marca">detenida</span></div>
+<div class="estado" id="estado">Tocá <b>Iniciar envío</b> y permití la cámara.</div>
+<button id="iniciar" class="principal">Iniciar envío</button>
+
+<div class="grupo">
+ <h2>Enfoque</h2>
+ <div class="fila"><button id="enfoqueAuto">Automático</button><button id="enfoqueBloquear">Bloquear aquí</button></div>
+ <div class="fila"><input id="enfoqueDistancia" type="range" disabled><span class="valor" id="enfoqueValor">–</span></div>
+ <p class="nota" id="enfoqueNota">Apuntá al objeto a la distancia de trabajo y tocá <b>Bloquear aquí</b>. Bloquealo antes de calibrar y no lo cambies después.</p>
+</div>
+
+<div class="grupo">
+ <h2>Zoom</h2>
+ <div class="fila"><input id="zoom" type="range" disabled><span class="valor" id="zoomValor">–</span></div>
+ <p class="nota">Debe ser el mismo con el que calibraste. Se guarda en este celular.</p>
+</div>
+
+<div class="grupo">
+ <h2>Exposición y blancos</h2>
+ <div class="fila"><button id="expAuto">Automáticos</button><button id="expBloquear">Bloquear</button></div>
+ <p class="nota">Bloquearlos evita que la imagen cambie de brillo o color entre fotos.</p>
+</div>
+
+<div class="grupo">
+ <h2>Envío (fluidez)</h2>
+ <div class="fila"><span>Tamaño</span><select id="tamano">
+  <option value="640">640 px (más rápido)</option><option value="960" selected>960 px (recomendado)</option>
+  <option value="1280">1280 px (más detalle)</option></select></div>
+ <div class="fila"><span>Calidad</span><select id="calidad">
+  <option value="0.6">60 %</option><option value="0.75" selected>75 %</option><option value="0.9">90 % (calibración)</option></select></div>
+ <div class="fila"><span>Fotos/s</span><select id="fps">
+  <option value="5">5</option><option value="10">10</option><option value="15" selected>15</option><option value="20">20</option></select></div>
+ <div class="fila"><span>Cámara</span><select id="camara"><option value="">trasera (automática)</option></select></div>
+ <div class="fila"><button id="linterna">Linterna</button></div>
+ <p class="nota">Mantené esta pantalla encendida y al frente. Los ajustes se guardan en este celular.</p>
+</div>
+
+<script>
+const LADO='__LADO__', CLAVE='__CLAVE__';
+const $=id=>document.getElementById(id);
+const video=$('video'), estado=$('estado');
+const CLAVE_LOCAL='watsocote_camara_'+LADO;
+let ajustes={tamano:'960',calidad:'0.75',fps:'15',camara:'',zoom:null,enfoque:'auto',distancia:null,exposicion:'auto'};
+try{Object.assign(ajustes,JSON.parse(localStorage.getItem(CLAVE_LOCAL)||'{}'));}catch(e){}
+const guardar=()=>{try{localStorage.setItem(CLAVE_LOCAL,JSON.stringify(ajustes));}catch(e){}};
+for(const id of ['tamano','calidad','fps']){$(id).value=ajustes[id];$(id).onchange=()=>{ajustes[id]=$(id).value;guardar();};}
+
+let stream=null, track=null, enviando=false, wake=null, enVuelo=false;
+let enviadas=0, ultimoEnvio=0, tiempos=[], ultimoError='';
+const lienzo=document.createElement('canvas'), ctx=lienzo.getContext('2d');
+
+function capacidades(){try{return track&&track.getCapabilities?track.getCapabilities():{};}catch(e){return {};}}
+function ajustesActuales(){try{return track?track.getSettings():{};}catch(e){return {};}}
+async function aplicar(restriccion){
+ try{await track.applyConstraints({advanced:[restriccion]});return true;}
+ catch(e){ultimoError=e.message;return false;}
+}
+
+async function listarCamaras(){
+ const sel=$('camara');
+ try{
+  const dispositivos=(await navigator.mediaDevices.enumerateDevices()).filter(d=>d.kind==='videoinput');
+  sel.innerHTML='<option value="">trasera (automática)</option>'+dispositivos.map((d,i)=>
+   `<option value="${d.deviceId}">${(d.label||('cámara '+(i+1))).replace(/[<>&"]/g,'')}</option>`).join('');
+  sel.value=dispositivos.some(d=>d.deviceId===ajustes.camara)?ajustes.camara:'';
+ }catch(e){}
+ sel.onchange=async()=>{ajustes.camara=sel.value;guardar();if(stream)await abrir();};
+}
+
+const ladoMayor=()=>Math.max(video.videoWidth||0,video.videoHeight||0);
+async function esperarTamano(anterior){
+ // Al cambiar la resolución, el video tarda un momento en informar el tamaño nuevo.
+ for(let i=0;i<20&&ladoMayor()===anterior;i++)await new Promise(r=>setTimeout(r,100));
+}
+async function mejorResolucion(){
+ // Chrome para Android suele abrir la cámara a 640x480 si el celular está vertical y se pidió 1920x1080.
+ // Se prueban varias combinaciones y queda la de mayor resolución (hasta ~1920 px).
+ const pruebas=[{width:{ideal:1920},height:{ideal:1080}},{width:{ideal:1080},height:{ideal:1920}},
+                {width:{ideal:1280},height:{ideal:720}},{width:{ideal:720},height:{ideal:1280}}];
+ let mejor=null,mejorTam=ladoMayor();
+ if(mejorTam>=1280)return;
+ for(const p of pruebas){
+  const antes=ladoMayor();
+  try{await track.applyConstraints(p);}catch(e){continue;}
+  await esperarTamano(antes);
+  if(ladoMayor()>mejorTam){mejorTam=ladoMayor();mejor=p;}
+  if(mejorTam>=1280)return;
+ }
+ if(mejor){const antes=ladoMayor();try{await track.applyConstraints(mejor);await esperarTamano(antes);}catch(e){}}
+}
+
+async function abrir(){
+ if(stream)stream.getTracks().forEach(t=>t.stop());
+ const video_={width:{ideal:1920},height:{ideal:1080},frameRate:{ideal:30}};
+ if(ajustes.camara)video_.deviceId={exact:ajustes.camara};else video_.facingMode={ideal:'environment'};
+ stream=await navigator.mediaDevices.getUserMedia({video:video_,audio:false});
+ track=stream.getVideoTracks()[0];
+ video.srcObject=stream;await video.play().catch(()=>{});
+ await new Promise(r=>{if(video.videoWidth)r();else video.onloadedmetadata=()=>r();});
+ await mejorResolucion();
+ await prepararControles();
+ await listarCamaras();
+}
+
+async function prepararControles(){
+ const c=capacidades();
+ // Zoom
+ const z=$('zoom');
+ if(c.zoom){
+  z.min=c.zoom.min;z.max=c.zoom.max;z.step=c.zoom.step||0.1;z.disabled=false;
+  const inicial=ajustes.zoom!==null&&ajustes.zoom>=c.zoom.min&&ajustes.zoom<=c.zoom.max?ajustes.zoom:(ajustesActuales().zoom??c.zoom.min);
+  z.value=inicial;await aplicar({zoom:Number(inicial)});$('zoomValor').textContent=Number(inicial).toFixed(1)+'×';
+  z.oninput=async()=>{$('zoomValor').textContent=Number(z.value).toFixed(1)+'×';ajustes.zoom=Number(z.value);guardar();await aplicar({zoom:Number(z.value)});};
+ }else{z.disabled=true;$('zoomValor').textContent='no disponible';}
+ // Enfoque
+ const modos=c.focusMode||[], d=$('enfoqueDistancia');
+ const manual=modos.includes('manual')&&c.focusDistance;
+ $('enfoqueAuto').disabled=!modos.includes('continuous');
+ $('enfoqueBloquear').disabled=!(manual||modos.includes('single-shot'));
+ if(manual){
+  d.min=c.focusDistance.min;d.max=c.focusDistance.max;d.step=c.focusDistance.step||0.01;
+  d.oninput=async()=>{ajustes.enfoque='bloqueado';ajustes.distancia=Number(d.value);guardar();
+   $('enfoqueValor').textContent=Number(d.value).toFixed(2);await aplicar({focusMode:'manual',focusDistance:Number(d.value)});marcarEnfoque();};
+ }
+ $('enfoqueNota').innerHTML=modos.length?('Este celular permite: '+modos.join(', ')+(manual?' (distancia '+c.focusDistance.min+'–'+c.focusDistance.max+')':'')+'.<br>Apuntá al objeto a la distancia de trabajo y tocá <b>Bloquear aquí</b>. Bloquealo antes de calibrar.'):
+  '<span class="warn">El navegador no permite controlar el enfoque en este celular.</span> Usá buena luz y una distancia fija.';
+ if(ajustes.enfoque==='bloqueado'&&manual&&ajustes.distancia!==null){
+  d.disabled=false;d.value=ajustes.distancia;await aplicar({focusMode:'manual',focusDistance:Number(ajustes.distancia)});
+  $('enfoqueValor').textContent=Number(ajustes.distancia).toFixed(2);
+ }else if(modos.includes('continuous')){await aplicar({focusMode:'continuous'});}
+ marcarEnfoque();
+ // Exposición y blancos
+ const exp=(c.exposureMode||[]), wb=(c.whiteBalanceMode||[]);
+ $('expBloquear').disabled=!(exp.includes('manual')||wb.includes('manual'));
+ $('expAuto').disabled=!(exp.includes('continuous')||wb.includes('continuous'));
+ if(ajustes.exposicion==='bloqueada')await bloquearExposicion(); else marcarExposicion();
+ // Linterna
+ $('linterna').disabled=!c.torch;
+}
+
+function marcarEnfoque(){
+ $('enfoqueAuto').classList.toggle('activo',ajustes.enfoque!=='bloqueado');
+ $('enfoqueBloquear').classList.toggle('activo',ajustes.enfoque==='bloqueado');
+}
+function marcarExposicion(){
+ $('expAuto').classList.toggle('activo',ajustes.exposicion!=='bloqueada');
+ $('expBloquear').classList.toggle('activo',ajustes.exposicion==='bloqueada');
+}
+
+$('enfoqueAuto').onclick=async()=>{
+ ajustes.enfoque='auto';guardar();await aplicar({focusMode:'continuous'});
+ $('enfoqueDistancia').disabled=true;$('enfoqueValor').textContent='auto';marcarEnfoque();
+};
+$('enfoqueBloquear').onclick=async()=>{
+ const c=capacidades(), modos=c.focusMode||[];
+ if(modos.includes('manual')&&c.focusDistance){
+  // Toma la distancia que encontró el autoenfoque y la deja fija.
+  const actual=ajustesActuales().focusDistance;
+  const valor=Number.isFinite(actual)?actual:Number($('enfoqueDistancia').value||c.focusDistance.min);
+  if(await aplicar({focusMode:'manual',focusDistance:valor})){
+   ajustes.enfoque='bloqueado';ajustes.distancia=valor;guardar();
+   const d=$('enfoqueDistancia');d.disabled=false;d.value=valor;$('enfoqueValor').textContent=valor.toFixed(2);
+  }
+ }else if(modos.includes('single-shot')){
+  if(await aplicar({focusMode:'single-shot'})){ajustes.enfoque='bloqueado';guardar();$('enfoqueValor').textContent='fijo';}
+ }
+ marcarEnfoque();
+};
+
+async function bloquearExposicion(){
+ const c=capacidades(), s=ajustesActuales(), r={};
+ if((c.exposureMode||[]).includes('manual')){r.exposureMode='manual';if(Number.isFinite(s.exposureTime))r.exposureTime=s.exposureTime;}
+ if((c.whiteBalanceMode||[]).includes('manual')){r.whiteBalanceMode='manual';if(Number.isFinite(s.colorTemperature))r.colorTemperature=s.colorTemperature;}
+ if(Object.keys(r).length&&await aplicar(r)){ajustes.exposicion='bloqueada';guardar();}
+ marcarExposicion();
+}
+$('expBloquear').onclick=bloquearExposicion;
+$('expAuto').onclick=async()=>{
+ const c=capacidades(), r={};
+ if((c.exposureMode||[]).includes('continuous'))r.exposureMode='continuous';
+ if((c.whiteBalanceMode||[]).includes('continuous'))r.whiteBalanceMode='continuous';
+ await aplicar(r);ajustes.exposicion='auto';guardar();marcarExposicion();
+};
+let linterna=false;
+$('linterna').onclick=async()=>{linterna=!linterna;await aplicar({torch:linterna});$('linterna').classList.toggle('activo',linterna);};
+
+function resumenAjustes(){
+ const s=ajustesActuales();
+ return {
+  enfoque:ajustes.enfoque==='bloqueado'?('bloqueado'+(Number.isFinite(s.focusDistance)?' '+s.focusDistance.toFixed(2):'')):(s.focusMode||'auto'),
+  zoom:Number.isFinite(s.zoom)?Number(s.zoom.toFixed(2)):null,
+  exposicion:ajustes.exposicion==='bloqueada'?'bloqueada':'auto',
+  camara:s.width&&s.height?(s.width+'x'+s.height):null,
+ };
+}
+
+async function enviarFoto(){
+ const w=video.videoWidth,h=video.videoHeight;if(!w||!h)return;
+ // Recorte exacto a 9:16 (vertical) o 16:9 (apaisada): la calibración trabaja a 1280x720.
+ const vertical=h>w, objetivo=vertical?9/16:16/9;
+ let sw=w,sh=h;if(w/h>objetivo)sw=Math.round(h*objetivo);else sh=Math.round(w/objetivo);
+ const mayor=Math.min(Number(ajustes.tamano),Math.max(sw,sh));
+ const ow=vertical?Math.round(mayor*9/16):mayor, oh=vertical?mayor:Math.round(mayor*9/16);
+ lienzo.width=ow;lienzo.height=oh;
+ ctx.drawImage(video,(w-sw)/2,(h-sh)/2,sw,sh,0,0,ow,oh);
+ const blob=await new Promise(r=>lienzo.toBlob(r,'image/jpeg',Number(ajustes.calidad)));
+ const inicio=performance.now();
+ const r=await fetch('/frame?lado='+LADO+'&clave='+encodeURIComponent(CLAVE),{method:'POST',body:blob,
+  headers:{'Content-Type':'image/jpeg','X-Ajustes':JSON.stringify(resumenAjustes())}});
+ if(!r.ok){const d=await r.json().catch(()=>({}));throw new Error(d.error||('HTTP '+r.status));}
+ tiempos.push(performance.now()-inicio);if(tiempos.length>20)tiempos.shift();
+ enviadas++;
+ return blob.size;
+}
+
+let ultimoTam=0, marcas=[];
+// Varias fotos en camino a la vez: con un túnel (Colab) cada envío tarda ~0,5-1 s ida y vuelta,
+// y esperar la respuesta antes de mandar la siguiente limitaba a 1-2 fotos/s.
+const MAX_EN_CAMINO=8;
+let enCamino=0;
+async function ciclo(){
+ while(enviando){
+  const espera=1000/Number(ajustes.fps)-(performance.now()-ultimoEnvio);
+  if(espera>0||enCamino>=MAX_EN_CAMINO){await new Promise(r=>setTimeout(r,Math.max(espera,5)));continue;}
+  ultimoEnvio=performance.now();enCamino++;
+  enviarFoto().then(tam=>{ultimoTam=tam||ultimoTam;marcas.push(performance.now());ultimoError='';})
+   .catch(async e=>{ultimoError=e.message;await new Promise(r=>setTimeout(r,800));})
+   .finally(()=>{enCamino--;});
+ }
+}
+
+setInterval(()=>{
+ const ahora=performance.now();marcas=marcas.filter(t=>ahora-t<3000);
+ const fps=marcas.length>1?(marcas.length-1)/((marcas[marcas.length-1]-marcas[0])/1000):0;
+ const ms=tiempos.length?Math.round(tiempos.reduce((a,b)=>a+b,0)/tiempos.length):0;
+ const r=resumenAjustes();
+ $('marca').textContent=enviando?('enviando · '+fps.toFixed(1)+' fotos/s'):'detenida';
+ if(!enviando)return;
+ const camaraBaja=ladoMayor()&&ladoMayor()<1280;
+ estado.innerHTML=(ultimoError?'<span class="bad">Error: '+ultimoError.replace(/[<>&]/g,'')+'</span><br>':'<span class="ok">Enviando al servidor</span><br>')+
+  fps.toFixed(1)+' fotos/s · '+Math.round(ultimoTam/1024)+' KB · subida '+ms+' ms<br>'+
+  'cámara '+(video.videoWidth+'×'+video.videoHeight)+' · enfoque '+r.enfoque+' · zoom '+(r.zoom??'–')+' · exposición '+r.exposicion+
+  (camaraBaja?'<br><span class="warn">La cámara entrega poca resolución: probá otra cámara en "Cámara".</span>':'');
+},500);
+
+async function pantallaEncendida(){
+ try{if('wakeLock' in navigator){wake=await navigator.wakeLock.request('screen');}}catch(e){}
+}
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'&&enviando)pantallaEncendida();});
+
+$('iniciar').onclick=async()=>{
+ if(enviando){enviando=false;$('iniciar').textContent='Iniciar envío';try{wake&&wake.release();}catch(e){}estado.textContent='Envío detenido.';return;}
+ if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia){
+  estado.innerHTML='<span class="bad">Este navegador no permite usar la cámara aquí.</span> Abrí el enlace en Chrome y aceptá el certificado (la página debe empezar con https).';return;
+ }
+ try{
+  estado.textContent='Abriendo cámara…';
+  if(!stream)await abrir();
+  enviando=true;$('iniciar').textContent='Detener envío';await pantallaEncendida();ciclo();
+ }catch(e){estado.innerHTML='<span class="bad">No se pudo abrir la cámara: '+String(e.message||e).replace(/[<>&]/g,'')+'</span>';}
+};
+</script>
+</body>
+</html>
