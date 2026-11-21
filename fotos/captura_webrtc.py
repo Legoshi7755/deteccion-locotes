@@ -117,6 +117,7 @@ class Handler(BaseHTTPRequestHandler):
         except ValueError as exc:
             self.responder(400, str(exc), "text/plain")
             return
+        html = html.replace("<details><summary>Configurar emisión", "<details open><summary>Configurar emisión", 1)
         html = html.replace("<h1>Captura estéreo WebRTC</h1>", f"<h1>Captura estéreo WebRTC</h1><p>Sesión activa: {SESION.name}</p>")
         self.responder(200, html.replace("__TOKEN__", TOKEN), "text/html")
 
