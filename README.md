@@ -28,6 +28,45 @@ Usa el mismo modelo, umbral (0,40) y filtros que la aplicación. Opciones:
 - `--conf 0.3`: cambia la confianza mínima.
 - `--cada 3`: en videos, analiza 1 de cada 3 cuadros.
 
+## Celulares en modo directo (sin VDO.Ninja)
+
+Cada celular abre una página propia que manda las fotos **directo al servidor**. Comparado con VDO.Ninja:
+- **Más fluido:** sin el paso por VDO.Ninja ni la captura en el navegador de la PC.
+- **Fotos sincronizadas:** el servidor empareja las dos fotos por hora de llegada (desfase típico de 5–30 ms en la misma red Wi-Fi).
+- **Control de la cámara desde el celular:** bloqueo del **enfoque**, de la **exposición y los blancos**, **zoom** fijo, tamaño (640/960/1280 px), calidad JPEG, fotos por segundo, elección de cámara y linterna. Los ajustes quedan guardados en cada celular.
+
+El bloqueo de enfoque y el zoom dependen de que Chrome para Android los ofrezca en ese modelo. La página muestra qué permite cada celular.
+
+### En la PC o notebook (misma red Wi-Fi)
+
+```bash
+python fotos/yolo_segmentacion_video_ampliado.py --directo
+```
+
+1. La consola muestra la dirección de la app (`https://<IP de la PC>:8766/?clave=...`) y un código QR por celular.
+2. Abre la app en la PC. También muestra los QR.
+3. Escanea cada QR con **su** celular, permite la cámara y toca **Iniciar envío**.
+4. En cada celular apunta al objeto a la distancia de trabajo y toca **Bloquear aquí** (enfoque). Después fija el zoom y bloquea exposición y blancos.
+
+Notas:
+- **Advertencia del navegador:** el certificado HTTPS es propio (Chrome exige HTTPS para usar la cámara). La primera vez, la PC y los celulares avisan que la conexión "no es privada": entra en *Configuración avanzada → Continuar*.
+- **Firewall de Windows:** si pregunta, permite Python en **redes privadas**. Si los celulares no cargan la página, revisa que estén en la misma red Wi-Fi que la PC.
+- **Clave de acceso:** la dirección incluye una clave al azar. Sin ella, el servidor no muestra nada. Para fijarla: `--clave miclave`.
+
+### Calibrar en modo directo
+
+```bash
+python fotos/captura_webrtc.py --directo
+```
+
+Usa el mismo procedimiento. En cada celular elige **Tamaño 1280 px** y **Calidad 90 %**, y bloquea enfoque, exposición y zoom **antes** de la primera foto. No los cambies después: la detección debe usar los mismos.
+
+**Hay que recalibrar al pasar de VDO.Ninja al modo directo**, porque el recorte de la imagen puede ser distinto. Para elegir la sesión de calibración: `WATSOCOTE_SESION=nombre` (en Windows PowerShell: `$env:WATSOCOTE_SESION="nombre"`).
+
+### En Colab
+
+En las celdas **Iniciar servidor** (parte 3) y **4.2** (calibración), elige `CELULARES = "Directo (túnel)"`. El notebook abre un túnel HTTPS temporal de Cloudflare (sin advertencias de certificado) y muestra el enlace de la app y los QR de los celulares.
+
 ## Contenido
 
 ```
@@ -40,6 +79,8 @@ Usa el mismo modelo, umbral (0,40) y filtros que la aplicación. Opciones:
     ├── yolo_segmentacion_video_ampliado.py   # ▶ punto de entrada
     ├── yolo_triangulacion_webrtc.py          # servidor, detección y triangulación
     ├── prueba_imagenes.py                    # prueba con fotos/videos, sin celulares
+    ├── camaras_directas.py                   # modo directo: recibe y empareja las fotos de los celulares
+    ├── camara_celular.html                   # página de cámara para cada celular (enfoque, zoom, envío)
     ├── best_frutos_video_ampliado.pt         # modelo YOLO de frutos rojos (activo)
     ├── mobile_sam.pt                         # MobileSAM para el refinamiento manual
     ├── entrenamiento_locote_rojo/            # métricas del modelo entrenado

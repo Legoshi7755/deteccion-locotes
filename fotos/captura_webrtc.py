@@ -14,6 +14,8 @@ from threading import Lock
 import cv2
 import numpy as np
 
+import camaras_directas as directas
+
 BASE = Path(__file__).resolve().parent
 # Sesión de calibración activa. Se elige con la variable de entorno WATSOCOTE_SESION
 # (p. ej. desde el notebook de Colab); por defecto, la sesión original del montaje.
@@ -34,8 +36,8 @@ def guardar_par(datos):
     giradas = []
     for lado in STREAMS:
         valor = datos[lado]
-        if not isinstance(valor, str) or not valor.startswith("data:image/png;base64,"):
-            raise ValueError("Respuesta de imagen PNG no válida")
+        if not isinstance(valor, str) or not valor.startswith(("data:image/png;base64,", "data:image/jpeg;base64,")):
+            raise ValueError("Respuesta de imagen PNG/JPEG no válida")
         raw = base64.b64decode(valor.split(",", 1)[1], validate=True)
         imagen = cv2.imdecode(np.frombuffer(raw, np.uint8), cv2.IMREAD_COLOR)
         if imagen is None:
@@ -102,15 +104,23 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(raw)
 
     def do_GET(self):
-        if self.path != "/":
+        if directas.manejar_get(self):
+            return
+        if self.path.split("?")[0] != "/":
             self.responder(404, "{}")
             return
-        from configurar_video import preparar_receptor
+        if not directas.clave_valida(self):
+            self.responder(403, "Falta la clave de acceso (?clave=...) o no es correcta.", "text/plain")
+            return
+        from configurar_video import panel, preparar_receptor
         html = preparar_receptor((BASE / "captura_webrtc.html").read_text(encoding="utf-8"))
         html = html.replace("<h1>Captura estéreo WebRTC</h1>", f"<h1>Captura estéreo WebRTC</h1><p>Sesión activa: {SESION.name}</p>")
+        html = directas.inyectar_visor(html, panel_vdo=panel())
         self.responder(200, html.replace("__TOKEN__", TOKEN), "text/html")
 
     def do_POST(self):
+        if directas.manejar_post(self):
+            return
         if self.path != "/capturar" or self.headers.get("X-Capture-Token") != TOKEN:
             self.responder(403, json.dumps({"error": "Solicitud no autorizada"}))
             return
@@ -118,7 +128,7 @@ class Handler(BaseHTTPRequestHandler):
             longitud = int(self.headers.get("Content-Length", "0"))
             if not 0 < longitud <= LIMIT:
                 raise ValueError("Tamaño de solicitud no permitido")
-            datos = json.loads(self.rfile.read(longitud))
+            datos = directas.resolver_directo(json.loads(self.rfile.read(longitud)))
             # Varias pestañas pueden cargar sin bloquearse; guardar pares en serie.
             with GUARDADO_LOCK:
                 mensaje = guardar_par(datos)
@@ -132,10 +142,12 @@ class Handler(BaseHTTPRequestHandler):
 
 
 if __name__ == "__main__":
-    print("Abrí http://127.0.0.1:8765 en Chrome. Ctrl+C aquí para finalizar.")
+    import argparse
+    args = directas.argumentos(argparse.ArgumentParser(description="Captura de pares para calibrar")).parse_args()
+    directas.configurar_desde(args, 8765)
     print(f"Sesión activa: {SESION}")
     print("No mezclar cámaras o montajes distintos en una sesión de calibración.")
-    with ThreadingHTTPServer(("127.0.0.1", 8765), Handler) as servidor:
+    with directas.servir(Handler, 8765, args.host, "la página de captura") as servidor:
         try:
             servidor.serve_forever()
         except KeyboardInterrupt:

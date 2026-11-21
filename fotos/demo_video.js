@@ -3,6 +3,7 @@ let ultimoTiempoCaptura=0,ultimoTiempoSolicitud=0,ultimoTiempoServidor=0;
 // El servidor los vuelve a llevar a 1280x720, el tamaño de la calibración.
 const LADO_MAYOR_VIDEO=960, CALIDAD_VIDEO=0.75;
 async function comprimirVideo(data){
+ if(data==='directo')return data;  // modo directo: el servidor ya tiene las fotos de los celulares
  const img=await new Promise((resolve,reject)=>{const i=new Image();i.onload=()=>resolve(i);i.onerror=()=>reject(new Error('No se pudo preparar el fotograma'));i.src=data;});
  const escala=Math.min(1,LADO_MAYOR_VIDEO/Math.max(img.naturalWidth,img.naturalHeight));
  const c=document.createElement('canvas');c.width=Math.round(img.naturalWidth*escala);c.height=Math.round(img.naturalHeight*escala);
