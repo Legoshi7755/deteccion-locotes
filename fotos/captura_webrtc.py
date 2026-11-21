@@ -4,6 +4,7 @@ No sincroniza las exposiciones. Mantener el tablero quieto.
 """
 import base64
 import json
+import os
 import re
 import secrets
 from http.server import BaseHTTPRequestHandler, HTTPServer, ThreadingHTTPServer
@@ -14,7 +15,12 @@ import cv2
 import numpy as np
 
 BASE = Path(__file__).resolve().parent
-SESION = BASE / "sesiones" / "calibracion_2026-10-31_02"
+# Sesión de calibración activa. Se elige con la variable de entorno WATSOCOTE_SESION
+# (p. ej. desde el notebook de Colab); por defecto, la sesión original del montaje.
+NOMBRE_SESION = os.environ.get("WATSOCOTE_SESION", "").strip() or "calibracion_2026-10-31_02"
+if not re.fullmatch(r"[A-Za-z0-9_-]{1,80}", NOMBRE_SESION):
+    raise SystemExit(f"Nombre de sesión no válido: {NOMBRE_SESION!r} (usar letras, números, '-' o '_')")
+SESION = BASE / "sesiones" / NOMBRE_SESION
 TOKEN = secrets.token_urlsafe(24)
 STREAMS = {"izq": "jsM66LZ", "der": "pEHcrM3"}
 LIMIT = 40 * 1024 * 1024
@@ -54,7 +60,7 @@ def guardar_par(datos):
     numeros = []
     for lado in STREAMS:
         carpeta = SESION / f"fotos_{lado}"
-        carpeta.mkdir(exist_ok=True)
+        carpeta.mkdir(parents=True, exist_ok=True)
         for f in carpeta.iterdir():
             if f.suffix.lower() not in (".jpg", ".jpeg", ".png"):
                 continue
