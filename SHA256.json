@@ -20,7 +20,12 @@
   "fotos/vision_demo.html": "d53f797b7037505212a3899ffefa4802faf2dd907a9d2bd81272dd2efbeca533",
   "fotos/vision_presentacion.js": "786b95d9d3f745d69aa88f2f7eb32cc69f03acabdc0ece2ba46950e6a58ee1f7",
   "fotos/yolo_segmentacion_video_ampliado.py": "be968166cca9ac7fd5c9120b4ef2c6eba6797037398e1f8e8c1f005139b58676",
-  "fotos/yolo_triangulacion_webrtc.py": "984ade4fb35d96dbfd5b798cae1f1c54e67f7398ed9629391ce3665e5661f07a",
+  "fotos/yolo_triangulacion_webrtc.py": "a3102d93563eed2b015ab0903638ade5e12f1fea56b3b0e157c32115b08c20fb",
   "fotos/entrenamiento_locote_rojo/resultado_frutos_video_ampliado.json": "e01c947740d7d576ac4b310850973f18cf5f3d3159314d4357c5e8d1fbf30eba",
-  "fotos/sesiones/calibracion_2026-10-31_02/calibracion_charuco.npz": "5575042d60e9fca14e0ab1fe90680068a90d0a23e7793dc61a14bf7cd58e30ef"
+  "fotos/sesiones/calibracion_2026-10-31_02/calibracion_charuco.npz": "5575042d60e9fca14e0ab1fe90680068a90d0a23e7793dc61a14bf7cd58e30ef",
+  "fotos/prueba_imagenes.py": "9b1c32d6d9a8a26492f217fbf2144d2d647b7e6840b179ac80d1cba996c87c87",
+  "fotos/tallo_3d.py": "cc9a18f570b5eedadd954c0b470c15c8bbc969358b65757409a49982096eb71d",
+  "fotos/probar_locote_tallo.py": "c9f46a2d5e00378ddeb1c5c17cc8753034dc178a743b607afa6a158dc64c7a65",
+  "fotos/modelos/locote_tallo_v2.pt": "ae0453d5e17bc31b30de5913de6975f28619de3a15f9f9b2a6210ec69b2b5b65",
+  "fotos/modelos/locote_tallo_hojas.pt": "eed29abcc4bd6ff74db0e0cb0b196dca8dd472c7fb744e90fb911a76c840c47f"
 }
