@@ -31,7 +31,8 @@ import probar_locote_tallo as plt_
 
 BASE = Path(__file__).resolve().parent
 MAX_DIST_EPIPOLAR = 8.0     # px: desvío máximo entre la línea epipolar y el tallo derecho
-MAX_AMBIGUEDAD = 12.0       # px: si el tramo sobre la línea es más largo, el punto no es fiable
+MAX_AMBIGUEDAD = 12.0       # px: tramo mínimo tolerado sobre la línea (tallos finos)
+FACTOR_AMBIGUEDAD = 2.5     # el tramo puede ser hasta 2,5 veces el grosor del tallo (≈ cruce a más de ~24°)
 RANGO_MM = (100, 3000)      # profundidad plausible
 
 
@@ -90,6 +91,42 @@ def sin_distorsion(pts, K, d):
     return cv2.undistortPoints(np.asarray(pts, np.float64).reshape(-1, 1, 2), K, d, P=K).reshape(-1, 2)
 
 
+def grosor(px):
+    """Grosor medio del tallo en px: área / largo a lo largo de su eje principal."""
+    c = px - px.mean(0)
+    eje = np.linalg.svd(c, full_matrices=False)[2][0]
+    largo = max(float(np.ptp(c @ eje)), 1.0)
+    return len(px) / largo
+
+
+def epipolo_izq(cal):
+    """Epipolo de la imagen izquierda (F @ e = 0), en coordenadas homogéneas."""
+    return np.linalg.svd(cal['F'])[2][-1]
+
+
+def centrar_izq(p_vert, px_izq_vert, cal):
+    """Lleva el punto izquierdo al medio del tallo A LO LARGO de su línea epipolar.
+
+    En la derecha homologo() toma el medio del tramo del tallo sobre la línea epipolar;
+    hay que hacer lo mismo en la izquierda. Si no, un punto en el borde del tallo frente a uno
+    en el medio corre la disparidad medio grosor (~7 px a 60 cm: ~2 cm de error).
+    """
+    a = sin_distorsion(vertical_a_calibrada(p_vert)[0], cal['K1'], cal['d1'])[0]
+    e = epipolo_izq(cal)
+    direccion = e[:2] - a * e[2]
+    if np.linalg.norm(direccion) < 1e-9:
+        return p_vert
+    direccion /= np.linalg.norm(direccion)
+    normal = np.array([-direccion[1], direccion[0]])
+    und = sin_distorsion(vertical_a_calibrada(px_izq_vert), cal['K1'], cal['d1'])
+    sel = und[np.abs((und - a) @ normal) <= 1.5]
+    if len(sel) == 0:
+        return p_vert
+    s = (sel - a) @ direccion
+    q = a + float(np.median(s)) * direccion
+    return calibrada_a_vertical(a_distorsionado(q, cal['K1'], cal['d1']))[0]
+
+
 def homologo(a_und, px_der_cal, cal):
     """Punto del tallo derecho que corresponde al punto izquierdo (ya sin distorsión).
 
@@ -144,8 +181,9 @@ def triangular_punto(p_izq_vert, px_der_cal, cal):
     if h is None:
         return None, 'la línea epipolar no pasa por este tallo en la imagen derecha'
     b, desvio, tramo = h
-    if tramo > MAX_AMBIGUEDAD:
-        return None, f'ambiguo: el tallo corre paralelo a la línea epipolar ({tramo:.0f} px)'
+    limite = max(MAX_AMBIGUEDAD, FACTOR_AMBIGUEDAD * grosor(px_der_cal))
+    if tramo > limite:
+        return None, f'ambiguo: el tallo corre casi paralelo a la línea epipolar ({tramo:.0f} px > {limite:.0f})'
     try:
         xyz = triangular_und(a, b, cal)
     except ValueError as e:
@@ -164,7 +202,7 @@ def tallos_3d(img_izq_vert, img_der_vert, cal, modelo, modelo_hojas=None):
     salida = []
     for t in ti:
         px = pixeles(t['_poligono'], img_izq_vert.shape)
-        centro, extremo_a, extremo_b = puntos_del_tallo(px)
+        centro, extremo_a, extremo_b = (centrar_izq(p, px, cal) for p in puntos_del_tallo(px))
         # Emparejar: el tallo derecho cuya máscara corta la epipolar del centro a una profundidad válida.
         candidatos = []
         for j, pxd in enumerate(der_px):
