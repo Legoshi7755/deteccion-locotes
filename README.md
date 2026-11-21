@@ -13,6 +13,9 @@ El notebook [`colab_prueba_locotes.ipynb`](colab_prueba_locotes.ipynb) usa la GP
 1. **Fotos:** detecta y segmenta locotes en fotos subidas o de Google Drive.
 2. **Video:** anota un video completo y lo descarga.
 3. **En vivo (experimental):** corre la aplicación estéreo con los dos celulares.
+4. **Calibrar:** imprime el tablero ChArUco, captura pares con los dos celulares y calcula una calibración nueva. Se guarda en una sesión aparte y en tu Google Drive (`watsocote_calibraciones`), y la app en vivo la usa automáticamente. Hay que recalibrar cada vez que se mueven o cambian los soportes, la cámara o el zoom.
+
+En la celda de preparación, `VERSION` elige qué rama usar: `main` o `modelo-tallo` (locote + tallo y punto de agarre 3D).
 
 ## Probar con fotos o videos en tu PC (CPU)
 
