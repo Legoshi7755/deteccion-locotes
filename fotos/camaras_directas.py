@@ -352,16 +352,21 @@ SCRIPT_VISOR = r"""
  const CLAVE=__CLAVE_JSON__;
  // Las fotos las toma el servidor: foto() solo avisa que use el par emparejado.
  window.foto=async()=> 'directo'; try{foto=window.foto;}catch(e){}
+ // Vista en vivo: varias pedidas en camino (con un túnel cada una tarda ~0,5 s); se muestra siempre la más nueva.
  for(const lado of ['izq','der']){
   const img=document.getElementById(lado); if(!img||img.tagName!=='IMG')continue;
-  let n=0;
-  const siguiente=()=>setTimeout(()=>{img.src='/ultimo.jpg?lado='+lado+'&clave='+encodeURIComponent(CLAVE)+'&n='+(++n);},120);
-  const esperando='data:image/svg+xml,'+encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="540" height="960">'+
+  img.src='data:image/svg+xml,'+encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="540" height="960">'+
    '<rect width="100%" height="100%" fill="#080f12"/><text x="50%" y="50%" fill="#9bb0b7" font-size="34" '+
    'font-family="sans-serif" text-anchor="middle">Esperando celular '+(lado==='izq'?'izquierdo':'derecho')+'…</text></svg>');
-  // Si todavía no hay foto (404), se muestra el aviso; al cargar el aviso se vuelve a intentar.
-  img.onload=siguiente; img.onerror=()=>{img.src=esperando;};
-  img.src=esperando;
+  let pedido=0, mostrado=0, enCamino=0, url=null;
+  setInterval(async()=>{
+   if(enCamino>=6||document.hidden)return;
+   const n=++pedido; enCamino++;
+   try{
+    const r=await fetch('/ultimo.jpg?lado='+lado+'&clave='+encodeURIComponent(CLAVE)+'&n='+n,{cache:'no-store'});
+    if(r.ok&&n>mostrado){const b=await r.blob(); if(n>mostrado){mostrado=n; const viejo=url; url=URL.createObjectURL(b); img.src=url; if(viejo)setTimeout(()=>URL.revokeObjectURL(viejo),1000);}}
+   }catch(e){}finally{enCamino--;}
+  },70);
  }
  const caja=document.getElementById('estadoCelulares');
  const texto=(nombre,e)=>{

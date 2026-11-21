@@ -99,6 +99,28 @@ async function listarCamaras(){
  sel.onchange=async()=>{ajustes.camara=sel.value;guardar();if(stream)await abrir();};
 }
 
+const ladoMayor=()=>Math.max(video.videoWidth||0,video.videoHeight||0);
+async function esperarTamano(anterior){
+ // Al cambiar la resolución, el video tarda un momento en informar el tamaño nuevo.
+ for(let i=0;i<20&&ladoMayor()===anterior;i++)await new Promise(r=>setTimeout(r,100));
+}
+async function mejorResolucion(){
+ // Chrome para Android suele abrir la cámara a 640x480 si el celular está vertical y se pidió 1920x1080.
+ // Se prueban varias combinaciones y queda la de mayor resolución (hasta ~1920 px).
+ const pruebas=[{width:{ideal:1920},height:{ideal:1080}},{width:{ideal:1080},height:{ideal:1920}},
+                {width:{ideal:1280},height:{ideal:720}},{width:{ideal:720},height:{ideal:1280}}];
+ let mejor=null,mejorTam=ladoMayor();
+ if(mejorTam>=1280)return;
+ for(const p of pruebas){
+  const antes=ladoMayor();
+  try{await track.applyConstraints(p);}catch(e){continue;}
+  await esperarTamano(antes);
+  if(ladoMayor()>mejorTam){mejorTam=ladoMayor();mejor=p;}
+  if(mejorTam>=1280)return;
+ }
+ if(mejor){const antes=ladoMayor();try{await track.applyConstraints(mejor);await esperarTamano(antes);}catch(e){}}
+}
+
 async function abrir(){
  if(stream)stream.getTracks().forEach(t=>t.stop());
  const video_={width:{ideal:1920},height:{ideal:1080},frameRate:{ideal:30}};
@@ -107,6 +129,7 @@ async function abrir(){
  track=stream.getVideoTracks()[0];
  video.srcObject=stream;await video.play().catch(()=>{});
  await new Promise(r=>{if(video.videoWidth)r();else video.onloadedmetadata=()=>r();});
+ await mejorResolucion();
  await prepararControles();
  await listarCamaras();
 }
@@ -223,13 +246,18 @@ async function enviarFoto(){
 }
 
 let ultimoTam=0, marcas=[];
+// Varias fotos en camino a la vez: con un túnel (Colab) cada envío tarda ~0,5-1 s ida y vuelta,
+// y esperar la respuesta antes de mandar la siguiente limitaba a 1-2 fotos/s.
+const MAX_EN_CAMINO=8;
+let enCamino=0;
 async function ciclo(){
  while(enviando){
   const espera=1000/Number(ajustes.fps)-(performance.now()-ultimoEnvio);
-  if(espera>0){await new Promise(r=>setTimeout(r,espera));continue;}
-  ultimoEnvio=performance.now();
-  try{ultimoTam=await enviarFoto()||ultimoTam;marcas.push(ultimoEnvio);ultimoError='';}
-  catch(e){ultimoError=e.message;await new Promise(r=>setTimeout(r,800));}
+  if(espera>0||enCamino>=MAX_EN_CAMINO){await new Promise(r=>setTimeout(r,Math.max(espera,5)));continue;}
+  ultimoEnvio=performance.now();enCamino++;
+  enviarFoto().then(tam=>{ultimoTam=tam||ultimoTam;marcas.push(performance.now());ultimoError='';})
+   .catch(async e=>{ultimoError=e.message;await new Promise(r=>setTimeout(r,800));})
+   .finally(()=>{enCamino--;});
  }
 }
 
@@ -240,9 +268,11 @@ setInterval(()=>{
  const r=resumenAjustes();
  $('marca').textContent=enviando?('enviando · '+fps.toFixed(1)+' fotos/s'):'detenida';
  if(!enviando)return;
+ const camaraBaja=ladoMayor()&&ladoMayor()<1280;
  estado.innerHTML=(ultimoError?'<span class="bad">Error: '+ultimoError.replace(/[<>&]/g,'')+'</span><br>':'<span class="ok">Enviando al servidor</span><br>')+
   fps.toFixed(1)+' fotos/s · '+Math.round(ultimoTam/1024)+' KB · subida '+ms+' ms<br>'+
-  'cámara '+(r.camara||'?')+' · enfoque '+r.enfoque+' · zoom '+(r.zoom??'–')+' · exposición '+r.exposicion;
+  'cámara '+(video.videoWidth+'×'+video.videoHeight)+' · enfoque '+r.enfoque+' · zoom '+(r.zoom??'–')+' · exposición '+r.exposicion+
+  (camaraBaja?'<br><span class="warn">La cámara entrega poca resolución: probá otra cámara en "Cámara".</span>':'');
 },500);
 
 async function pantallaEncendida(){
