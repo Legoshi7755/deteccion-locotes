@@ -5,6 +5,10 @@ import importlib.util
 import captura_webrtc as captura
 
 if __name__ == "__main__":
+    # Misma elección de sesión que la captura: --sesion NOMBRE o WATSOCOTE_SESION.
+    captura.sesion_desde_argumentos()
+    if not (captura.SESION / "fotos_izq").is_dir():
+        raise SystemExit(f"No hay fotos en {captura.SESION}. Revisá el nombre de la sesión.")
     fuente = Path(__file__).resolve().parents[1] / "calibracion_estereo_charuco.py"
     sys.path.insert(0, str(fuente.parent))
     spec = importlib.util.spec_from_file_location("calibrador_sesion", fuente)

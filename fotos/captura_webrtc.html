@@ -1,11 +1,11 @@
 <!doctype html>
 <html lang="es"><meta charset="utf-8"><title>Captura estéreo WebRTC</title>
-<style>body{font:18px system-ui;background:#17202a;color:white;margin:24px}section{display:flex;gap:16px}article{width:50%}iframe{width:100%;height:48vh;border:1px solid #789}button{padding:14px;font:inherit}#estado{white-space:pre-wrap}</style>
+<style>body{font:18px system-ui;background:#17202a;color:white;margin:24px}section{display:flex;gap:16px}article{width:50%}iframe{width:100%;height:48vh;border:1px solid #789}button{padding:14px;font:inherit}#estado,#medicion{white-space:pre-wrap}</style>
 <h1>Captura estéreo WebRTC</h1>__CONFIG_VIDEO__
 <p>Mantené el tablero quieto. Las imágenes NO están sincronizadas. Salida fija: 1280 × 720. Las imágenes verticales (9:16) se giran 90° al guardar. Mantené fija la orientación de los teléfonos durante toda la sesión. Ampliar una imagen no recupera detalle. No cambies zoom ni cámara durante la sesión.</p>
 <section><article><h2>Izquierda</h2><iframe id="izq" allow="autoplay; fullscreen" src="https://vdo.ninja/?view=jsM66LZ&noaudio&cleanoutput&scale=100&bitrate=4000"></iframe></article>
 <article><h2>Derecha</h2><iframe id="der" allow="autoplay; fullscreen" src="https://vdo.ninja/?view=pEHcrM3&noaudio&cleanoutput&scale=100&bitrate=4000"></iframe></article></section>
-<p><button id="capturar">Capturar par</button></p><p id="estado">Esperá hasta ver ambas cámaras antes de capturar.</p>
+<p><button id="capturar">Capturar par</button> <button id="medir">Medir fluidez</button> <small>Barra espaciadora = capturar. Dejá esta pestaña en primer plano: Chrome frena los videos de pestañas ocultas.</small></p><p id="medicion"></p><p id="estado">Esperá hasta ver ambas cámaras antes de capturar.</p>
 <script>
 const streams={izq:'jsM66LZ',der:'pEHcrM3'}, pendientes=new Map();
 const boton=document.getElementById('capturar'), estado=document.getElementById('estado');
@@ -31,4 +31,35 @@ boton.onclick=async()=>{
   estado.textContent=d.mensaje;
  }catch(e){estado.textContent='Error: '+e.message;}finally{boton.disabled=false;}
 };
+</script>
+<script>
+// Solo de la página de calibración; interfaz_vision.py copia únicamente el primer <script>.
+const botonMedir=document.getElementById('medir'), medicion=document.getElementById('medicion');
+const codecActual=(new URL(document.getElementById('izq').src).searchParams.get('codec'))||'por defecto de VDO.Ninja';
+async function resolucion(dataUrl){const img=new Image();img.src=dataUrl;await img.decode();return img.naturalWidth+'×'+img.naturalHeight;}
+async function medirLados(lados,segundos){
+ const datos=Object.fromEntries(lados.map(l=>[l,{n:0,bytes:0,res:'',ms:0}]));
+ const fin=performance.now()+segundos*1000;
+ while(performance.now()<fin){
+  const t=performance.now();
+  const fotos=await Promise.all(lados.map(foto));
+  const dt=performance.now()-t;
+  for(let i=0;i<lados.length;i++){const d=datos[lados[i]];d.n++;d.ms+=dt;d.bytes+=fotos[i].length*3/4;if(!d.res)d.res=await resolucion(fotos[i]);}
+ }
+ return lados.map(l=>{const d=datos[l];return `${l}: ${(d.n/segundos).toFixed(1)} fotos/s, ${(d.ms/d.n).toFixed(0)} ms c/u, ${(d.bytes/d.n/1024).toFixed(0)} KB, ${d.res}`;}).join(' · ');
+}
+botonMedir.onclick=async()=>{
+ botonMedir.disabled=boton.disabled=true;
+ try{
+  const lineas=[`Códec de recepción: ${codecActual}`];
+  for(const [titulo,lados] of [['Solo izquierda',['izq']],['Solo derecha',['der']],['Ambas a la vez',['izq','der']]]){
+   medicion.textContent=lineas.join('\n')+`\nMidiendo ${titulo.toLowerCase()} (5 s)…`;
+   lineas.push(`${titulo} → ${await medirLados(lados,5)}`);
+  }
+  medicion.textContent=lineas.join('\n');
+  console.log(medicion.textContent);
+ }catch(e){medicion.textContent='Error al medir: '+e.message;}
+ finally{botonMedir.disabled=boton.disabled=false;}
+};
+document.addEventListener('keydown',e=>{if(e.code==='Space'&&!e.repeat&&!boton.disabled&&e.target.tagName!=='BUTTON'){e.preventDefault();boton.click();}});
 </script></html>

@@ -9,7 +9,8 @@ import re
 import secrets
 from http.server import BaseHTTPRequestHandler, HTTPServer, ThreadingHTTPServer
 from pathlib import Path
-from threading import Lock
+from threading import Lock, Timer
+from urllib.parse import parse_qs, urlsplit
 
 import cv2
 import numpy as np
@@ -17,6 +18,7 @@ import numpy as np
 BASE = Path(__file__).resolve().parent
 # Sesión de calibración activa. Se elige con la variable de entorno WATSOCOTE_SESION
 # (p. ej. desde el notebook de Colab); por defecto, la sesión original del montaje.
+# En la PC también se puede usar --sesion NOMBRE (lo procesa sesion_desde_argumentos).
 NOMBRE_SESION = os.environ.get("WATSOCOTE_SESION", "").strip() or "calibracion_2026-10-31_02"
 if not re.fullmatch(r"[A-Za-z0-9_-]{1,80}", NOMBRE_SESION):
     raise SystemExit(f"Nombre de sesión no válido: {NOMBRE_SESION!r} (usar letras, números, '-' o '_')")
@@ -102,11 +104,19 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(raw)
 
     def do_GET(self):
-        if self.path != "/":
+        ruta = urlsplit(self.path)
+        if ruta.path != "/":
             self.responder(404, "{}")
             return
         from configurar_video import preparar_receptor
-        html = preparar_receptor((BASE / "captura_webrtc.html").read_text(encoding="utf-8"))
+        # ?codec=vp8 (o h264, vp9, av1, o vacío) permite comparar sin editar config_video.json.
+        consulta = parse_qs(ruta.query, keep_blank_values=True)
+        codec = consulta["codec"][0] if "codec" in consulta else None
+        try:
+            html = preparar_receptor((BASE / "captura_webrtc.html").read_text(encoding="utf-8"), codec)
+        except ValueError as exc:
+            self.responder(400, str(exc), "text/plain")
+            return
         html = html.replace("<h1>Captura estéreo WebRTC</h1>", f"<h1>Captura estéreo WebRTC</h1><p>Sesión activa: {SESION.name}</p>")
         self.responder(200, html.replace("__TOKEN__", TOKEN), "text/html")
 
@@ -131,11 +141,32 @@ class Handler(BaseHTTPRequestHandler):
         pass
 
 
+def sesion_desde_argumentos(argv=None):
+    """Permite elegir la sesión con --sesion NOMBRE (además de WATSOCOTE_SESION)."""
+    global NOMBRE_SESION, SESION
+    import argparse
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--sesion", help="nombre de la sesión en fotos/sesiones (letras, números, '-' o '_')")
+    parser.add_argument("--no-abrir", action="store_true", help="no abrir el navegador automáticamente")
+    args = parser.parse_args(argv)
+    if args.sesion:
+        if not re.fullmatch(r"[A-Za-z0-9_-]{1,80}", args.sesion):
+            raise SystemExit(f"Nombre de sesión no válido: {args.sesion!r}")
+        NOMBRE_SESION = args.sesion
+        SESION = BASE / "sesiones" / NOMBRE_SESION
+    return args
+
+
 if __name__ == "__main__":
+    args = sesion_desde_argumentos()
     print("Abrí http://127.0.0.1:8765 en Chrome. Ctrl+C aquí para finalizar.")
+    print("Para comparar códecs: http://127.0.0.1:8765/?codec=vp8 (por defecto, el de config_video.json).")
     print(f"Sesión activa: {SESION}")
     print("No mezclar cámaras o montajes distintos en una sesión de calibración.")
     with ThreadingHTTPServer(("127.0.0.1", 8765), Handler) as servidor:
+        if not args.no_abrir:
+            import webbrowser
+            Timer(0.5, webbrowser.open, ["http://127.0.0.1:8765"]).start()
         try:
             servidor.serve_forever()
         except KeyboardInterrupt:

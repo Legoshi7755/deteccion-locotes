@@ -4,5 +4,7 @@
   "fps_solicitados": 30,
   "bitrate_kbps": 4000,
   "zoom_solicitado": 1,
-  "nota": "Solicitudes al emisor; dependen del navegador y c\u00e1mara. No cambiar c\u00e1mara ni recorte sin recalibrar."
+  "nota": "Solicitudes al emisor; dependen del navegador y c\u00e1mara. No cambiar c\u00e1mara ni recorte sin recalibrar.",
+  "codec_recepcion": "h264",
+  "nota_codec": "h264 usa el codificador por hardware del celular (m\u00e1s fluido). Vac\u00edo = c\u00f3dec por defecto de VDO.Ninja (VP8/VP9 por software)."
 }
